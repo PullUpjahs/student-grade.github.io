@@ -1,3 +1,19 @@
+// Firebase 초기화
+const firebaseConfig = {
+    apiKey: "AIzaSyDWQ7Qs50KEuNzcmWShEc_8iBYnx_Kkmz8",
+    authDomain: "pull-up-6504e.firebaseapp.com",
+    databaseURL: "https://pull-up-6504e-default-rtdb.firebaseio.com",
+    projectId: "pull-up-6504e",
+    storageBucket: "pull-up-6504e.firebasestorage.app",
+    messagingSenderId: "862460549940",
+    appId: "1:862460549940:web:f5b25f0dd599b7dcbfa361",
+    measurementId: "G-9YHPGFC48P"
+};
+
+// Firebase 초기화
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 // =========================
 // 1️⃣ 로그인 기능
 // =========================
@@ -6,24 +22,18 @@ function login() {
     const password = document.getElementById("password").value;
     const errorMessage = document.getElementById("error-message");
 
-    const users = {
-        student1: { pw: "1234", role: "student" }, student2: { pw: "1234", role: "student" },
-        student3: { pw: "1234", role: "student" }, student4: { pw: "1234", role: "student" },
-        student5: { pw: "1234", role: "student" }, student6: { pw: "1234", role: "student" },
-        student7: { pw: "1234", role: "student" }, student8: { pw: "1234", role: "student" },
-        student9: { pw: "1234", role: "student" }, student10: { pw: "1234", role: "student" },
-        student11: { pw: "1234", role: "student" }, student12: { pw: "1234", role: "student" },
-        student13: { pw: "1234", role: "student" }, 
-        teacher1: { pw: "5678", role: "teacher" }, teacher2: { pw: "5678", role: "teacher" }, teacher3: { pw: "5678", role: "teacher" }
-    };
-
-    if (users[username] && password === users[username].pw) {
-        localStorage.setItem("loggedInUser", username);
-        localStorage.setItem("role", users[username].role);
-        window.location.href = users[username].role === "student" ? "student.html" : "teacher.html";
-    } else {
-        errorMessage.innerText = "아이디 또는 비밀번호가 틀렸습니다.";
-    }
+    // Firebase에서 사용자 데이터 가져오기
+    const userRef = db.ref("users/" + username);
+    userRef.once("value", (snapshot) => {
+        const userData = snapshot.val();
+        if (userData && userData.pw === password) {
+            localStorage.setItem("loggedInUser", username);
+            localStorage.setItem("role", userData.role);
+            window.location.href = userData.role === "student" ? "student.html" : "teacher.html";
+        } else {
+            errorMessage.innerText = "아이디 또는 비밀번호가 틀렸습니다.";
+        }
+    });
 }
 
 // =========================
@@ -36,98 +46,75 @@ function submitSubject() {
     const selectedSubject = document.getElementById("subject").value;
     if (!selectedSubject) return alert("과목을 선택하세요!");
 
-    let studentData = JSON.parse(localStorage.getItem("studentData")) || {};
-    studentData[studentID] = { subject: selectedSubject, grade: null, date: null };
-    localStorage.setItem("studentData", JSON.stringify(studentData));
+    db.ref("students/" + studentID).set({
+        subject: selectedSubject,
+        grade: null,
+        date: null
+    });
 
     document.getElementById("statusMessage").innerText = `선택한 과목: ${selectedSubject} (저장됨)`;
 }
 
 // =========================
-// 3️⃣ 학생 기능 - 성적 조회
+// 3️⃣ 학생 기능 - 성적 조회 (실시간 반영)
 // =========================
 function loadStudentGrade() {
     const studentID = localStorage.getItem("loggedInUser");
     if (!studentID) return redirectToLogin();
 
-    const studentData = JSON.parse(localStorage.getItem("studentData")) || {};
-    const studentInfo = studentData[studentID];
-
-    document.getElementById("gradeResult").innerText = studentInfo && studentInfo.grade
-        ? `과목: ${studentInfo.subject} | 성적: ${studentInfo.grade} | 날짜: ${studentInfo.date}`
-        : "아직 성적이 입력되지 않았습니다.";
+    db.ref("students/" + studentID).on("value", (snapshot) => {
+        const studentInfo = snapshot.val();
+        document.getElementById("gradeResult").innerText = studentInfo && studentInfo.grade
+            ? `과목: ${studentInfo.subject} | 성적: ${studentInfo.grade} | 날짜: ${studentInfo.date}`
+            : "아직 성적이 입력되지 않았습니다.";
+    });
 }
 
 // =========================
-// 4️⃣ 선생님 기능 - 학생 목록 & 성적 입력
+// 4️⃣ 선생님 기능 - 학생 목록 & 성적 입력 (실시간 반영)
 // =========================
 function loadStudentData() {
-    const studentData = JSON.parse(localStorage.getItem("studentData")) || {};
-    const studentContainer = document.getElementById("studentContainer");
-    studentContainer.innerHTML = "";
+    db.ref("students").on("value", (snapshot) => {
+        const studentData = snapshot.val() || {};
+        const studentContainer = document.getElementById("studentContainer");
+        studentContainer.innerHTML = "";
 
-    for (let i = 1; i <= 13; i++) {
-        let studentID = `student${i}`;
-        let data = studentData[studentID] || { subject: "-", grade: "", date: "-" };
+        for (let i = 1; i <= 13; i++) {
+            let studentID = `student${i}`;
+            let data = studentData[studentID] || { subject: "-", grade: "", date: "-" };
 
-        let card = document.createElement("div");
-        card.classList.add("student-card");
-        card.innerHTML = `
-            <h3>${studentID}</h3>
-            <p><strong>과목:</strong> ${data.subject}</p>
-            <p><strong>최근 성적 입력 날짜:</strong> ${data.date}</p>
-            <input type="text" id="grade_${studentID}" value="${data.grade}" placeholder="성적 입력">
-            <button onclick="saveGrade('${studentID}')">저장</button>
-            <button onclick="deleteStudentData('${studentID}')">삭제</button>
-        `;
-        studentContainer.appendChild(card);
-    }
+            let card = document.createElement("div");
+            card.classList.add("student-card");
+            card.innerHTML = `
+                <h3>${studentID}</h3>
+                <p><strong>과목:</strong> ${data.subject}</p>
+                <p><strong>최근 성적 입력 날짜:</strong> ${data.date}</p>
+                <input type="text" id="grade_${studentID}" value="${data.grade}" placeholder="성적 입력">
+                <button onclick="saveGrade('${studentID}')">저장</button>
+                <button onclick="deleteStudentData('${studentID}')">삭제</button>
+            `;
+            studentContainer.appendChild(card);
+        }
+    });
 }
 
 // =========================
-// 5️⃣ 선생님 기능 - 성적 저장
+// 5️⃣ 선생님 성적 저장 (실시간 반영)
 // =========================
 function saveGrade(studentID) {
-    let studentData = JSON.parse(localStorage.getItem("studentData")) || {};
     let inputGrade = document.getElementById(`grade_${studentID}`).value;
 
-    if (studentData[studentID]) {
-        studentData[studentID].grade = inputGrade;
-        studentData[studentID].date = new Date().toLocaleDateString();
-        localStorage.setItem("studentData", JSON.stringify(studentData));
-        loadStudentData();
-    }
+    db.ref("students/" + studentID).update({
+        grade: inputGrade,
+        date: new Date().toLocaleDateString()  // 현재 날짜 자동 입력
+    });
 }
 
 // =========================
-// 6️⃣ 선생님 기능 - 학생 데이터 삭제
+// 6️⃣ 선생님 학생 데이터 삭제
 // =========================
 function deleteStudentData(studentID) {
-    let studentData = JSON.parse(localStorage.getItem("studentData")) || {};
-    if (studentData[studentID]) {
-        delete studentData[studentID];
-        localStorage.setItem("studentData", JSON.stringify(studentData));
-        loadStudentData();
-    }
-}
-
-// =========================
-// 7️⃣ UI 기능 - 탭 전환 (학생 페이지에서)
-// =========================
-function showTab(tabId) {
-    document.getElementById("subjectTab").style.display = "none";
-    document.getElementById("gradeTab").style.display = "none";
-    document.getElementById(tabId).style.display = "block";
-}
-
-// =========================
-// 8️⃣ 실시간 업데이트 (자동 새로고침)
-// =========================
-if (document.getElementById("studentContainer")) {
-    setInterval(loadStudentData, 20000);
-}
-if (document.getElementById("gradeResult")) {
-    setInterval(loadStudentGrade, 2000);
+    db.ref("students/" + studentID).remove();
 }
 
 // =========================
